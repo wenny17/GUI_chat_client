@@ -1,60 +1,64 @@
+from contextlib import asynccontextmanager
 import asyncio
 import socket
-import logging
-import gui
 
-class Connect:
-    def __init__(self, host, port, status_queue=None):
-        self.host = host
-        self.port = port
-        self.status_queue = status_queue
-        self.reader = None
-        self.writer = None
-        self.conn_state_mode = None
+import aionursery
 
+RECONNECT_DELAY = 3
+CONN_ATTEMPTS_BEFORE_DELAY = 3
 
-    async def connect(self):
-        connection_attempts = 0
-        while True:
-            try:
-                self.status_queue.put_nowait(self.conn_state_mode.INITIATED)
-                reader, writer = await asyncio.wait_for(asyncio.open_connection(self.host, self.port), timeout=60)
-                self.status_queue.put_nowait(self.conn_state_mode.ESTABLISHED)
-                print("Установлено соединение\n")
-                return reader, writer
+async def connect(
+                  host, port,
+                  status_queue,
+                  conn_mode
+                  ):
+    connection_attempts = 0
+    while True:
+        try:
+            status_queue.put_nowait(conn_mode.INITIATED)
 
-            except (asyncio.TimeoutError,
-                    socket.gaierror,
-                    ConnectionRefusedError,
-                    ConnectionResetError):
-                self.status_queue.put_nowait(self.conn_state_mode.INITIATED)
-                connection_attempts += 1
+            reader, writer = await asyncio.open_connection(host, port)
 
-                if connection_attempts < 3:
-                    print("Нет соединения. Повторная попытка.\n")
-                else:
-                    self.status_queue.put_nowait(self.conn_state_mode.CLOSED)
-                    print("Нет соединения. Повторная попытка через 3 сек.\n")
-                    await asyncio.sleep(3)
+            status_queue.put_nowait(conn_mode.ESTABLISHED)
+            return reader, writer
+        except (
+                socket.gaierror,
+                ConnectionRefusedError,
+                ConnectionResetError
+                ):
+            status_queue.put_nowait(conn_mode.CLOSED)
+            connection_attempts += 1
+            if connection_attempts > CONN_ATTEMPTS_BEFORE_DELAY:
+                status_queue.put_nowait(conn_mode.INITIATED)
+                await asyncio.sleep(RECONNECT_DELAY)
 
 
-    async def __aenter__(self):
-        self.reader, self.writer = await self.connect()
-        return self.reader, self.writer
+@asynccontextmanager
+async def connect_to_addr(
+                          host, port,
+                          status_queue=None,
+                          conn_mode=None
+                          ):
+    reader, writer = None, None
+    try:
+        reader, writer = await connect(host, port, status_queue, conn_mode)
+        yield reader, writer
 
-    async def __aexit__(self, exc_type, exc, tb):
-        if self.writer:
-            self.writer.close()
-            await self.writer.wait_closed()
+    finally:
+        if writer:
+            writer.close()
+            await writer.wait_closed()
 
 
-class ConnectToRead(Connect):
-    def __init__(self, host, port, queue):
-        super().__init__(host, port, queue)
-        self.conn_state_mode = gui.ReadConnectionStateChanged
+@asynccontextmanager
+async def create_handy_nursery():
+    try:
+        async with aionursery.Nursery() as nursery:
+            yield nursery
+    except aionursery.MultiError as e:
+        if len(e.exceptions) == 1:
+            raise e.exceptions[0] from None
+        raise
 
 
-class ConnectToWrite(Connect):
-    def __init__(self, host, port, queue):
-        super().__init__(host, port, queue)
-        self.conn_state_mode = gui.SendingConnectionStateChanged
+

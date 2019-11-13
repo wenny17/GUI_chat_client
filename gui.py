@@ -3,6 +3,8 @@ import asyncio
 from tkinter.scrolledtext import ScrolledText
 from enum import Enum
 
+from utils import create_handy_nursery
+
 
 class TkAppClosed(Exception):
     pass
@@ -68,7 +70,7 @@ async def update_status_panel(status_labels, status_updates_queue):
 
     read_label['text'] = f'Чтение: нет соединения'
     write_label['text'] = f'Отправка: нет соединения'
-    nickname_label['text'] = f'Имя пользователя: неизвестно'
+    nickname_label['text'] = f'Имя пользователя:: неизвестно'
 
     while True:
         msg = await status_updates_queue.get()
@@ -104,7 +106,7 @@ def create_status_panel(root_frame):
 async def draw(messages_queue, sending_queue, status_updates_queue):
     root = tk.Tk()
 
-    root.title('Чат Майнкрафтера')
+    root.title('Chat')
 
     root_frame = tk.Frame()
     root_frame.pack(fill="both", expand=True)
@@ -127,8 +129,15 @@ async def draw(messages_queue, sending_queue, status_updates_queue):
     conversation_panel = ScrolledText(root_frame, wrap='none')
     conversation_panel.pack(side="top", fill="both", expand=True)
 
-    await asyncio.gather(
-        update_tk(root_frame),
-        update_conversation_history(conversation_panel, messages_queue),
-        update_status_panel(status_labels, status_updates_queue)
-    )
+    async with create_handy_nursery() as nursery:
+        nursery.start_soon(update_tk(root_frame))
+        nursery.start_soon(update_conversation_history(
+                                                       conversation_panel,
+                                                       messages_queue
+                                                       )
+        )
+        nursery.start_soon(update_status_panel(
+                                               status_labels,
+                                               status_updates_queue
+                                               )
+        )
