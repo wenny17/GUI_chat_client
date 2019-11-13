@@ -11,7 +11,7 @@ class TkAppClosed(Exception):
 
 
 class ReadConnectionStateChanged(Enum):
-    INITIATED = 'устанавливаем соединение'
+    INITIATED = 'устанавливаем соединение...'
     ESTABLISHED = 'соединение установлено'
     CLOSED = 'соединение закрыто'
 
@@ -20,7 +20,7 @@ class ReadConnectionStateChanged(Enum):
 
 
 class SendingConnectionStateChanged(Enum):
-    INITIATED = 'устанавливаем соединение'
+    INITIATED = 'устанавливаем соединение...'
     ESTABLISHED = 'соединение установлено'
     CLOSED = 'соединение закрыто'
 
