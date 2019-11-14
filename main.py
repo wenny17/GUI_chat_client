@@ -73,7 +73,8 @@ async def save_messages(filepath, queue):
 
 
 def load_history(queue, history_directory):
-    with open(history_directory) as f:
+    with open(history_directory, "a+") as f:
+        f.seek(0)
         for line in f.readlines():
             queue.put_nowait(line.strip())
 
