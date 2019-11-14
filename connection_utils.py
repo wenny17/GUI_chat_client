@@ -10,7 +10,7 @@ from async_timeout import timeout
 import gui
 from utils import connect_to_addr, create_handy_nursery
 from exceptions import InvalidToken
-from registration_gui import register_draw
+from registration_gui import draw_register_window
 
 PACKETS_TIMEOUT = 4
 PING_TIMEOUT = 1
@@ -44,7 +44,7 @@ async def send_msgs(
                     token
                     ):
     if not token["token"]:
-        token["token"] = await registration(host, port, status_queue)
+        token["token"] = await register_new_user(host, port, status_queue)
 
     token = token["token"]
     conn_mode = gui.SendingConnectionStateChanged
@@ -92,7 +92,7 @@ async def read_and_log(reader):
     return message
 
 
-async def write_and_logg(writer, message):
+async def write_and_log(writer, message):
     writer.write(message.encode() + b'\n')
     logging.debug("SEND: {}".format(message))
     await writer.drain()
@@ -100,7 +100,7 @@ async def write_and_logg(writer, message):
 
 async def authorise(reader, writer, status_queue, token):
     entry_message = await read_and_log(reader)
-    await write_and_logg(writer, token)
+    await write_and_log(writer, token)
     message = await read_and_log(reader)
     auth_response = json.loads(message)
     if not auth_response:
@@ -114,15 +114,15 @@ async def authorise(reader, writer, status_queue, token):
 
 async def submit_message(reader, writer, message):
     message = ''.join(message).replace('\n', ' ') + '\n'
-    await write_and_logg(writer, message)
+    await write_and_log(writer, message)
     message = await read_and_log(reader)
 
 
-async def registration(host, port, status_queue):
+async def register_new_user(host, port, status_queue):
     status_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
     login_queue = asyncio.Queue(maxsize=1)
     async with create_handy_nursery() as nursery:
-        nursery.start_soon(register_draw(login_queue))
+        nursery.start_soon(draw_register_window(login_queue))
         tok = nursery.start_soon(register(host, port, login_queue, status_queue))
     return tok.result()
 
@@ -132,9 +132,9 @@ async def register(host, port, login_queue, status_queue):
     login = await login_queue.get()
     async with connect_to_addr(host, port, status_queue, conn_mode) as (reader, writer):
         entry_message = await read_and_log(reader)
-        await write_and_logg(writer, '')
+        await write_and_log(writer, '')
         message = await read_and_log(reader)
-        await write_and_logg(writer, login)
+        await write_and_log(writer, login)
         user_data = await read_and_log(reader)
         user_data = json.loads(user_data)
         token = user_data["account_hash"]

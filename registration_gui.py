@@ -4,7 +4,7 @@ import tkinter as tk
 from utils import create_handy_nursery
 
 
-async def register_draw(login_queue):
+async def draw_register_window(login_queue):
     root = tk.Tk()
     root.geometry("300x100")
     root.title('registration')
@@ -19,8 +19,7 @@ async def register_draw(login_queue):
     send_button["text"] = "Send"
     send_button["command"] = lambda: process_new_message(root, input_field, login_queue)
     send_button.pack()
-    async with create_handy_nursery() as nursery:
-         nursery.start_soon(update_tk(root))
+    await update_tk(root)
 
 def process_new_message(root, input_field, queue):
     text = input_field.get()

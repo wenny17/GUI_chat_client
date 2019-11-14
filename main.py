@@ -83,7 +83,7 @@ def get_args():
     load_dotenv()
     parser = argparse.ArgumentParser()
     parser.add_argument("-token",
-                        default=os.getenv("TOKEN"),
+                        default=os.getenv("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"),
                         help="chat token, if you havent one, please register")
     parser.add_argument("-host",
                         default=os.getenv("HOST") or DEFAULT_HOST)
