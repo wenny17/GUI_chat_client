@@ -11,15 +11,18 @@ Run python3 main.py with desired options
 ```
 python3 main.py --help
 usage: main.py [-h] [-token TOKEN] [-host HOST] [-port PORT] [-portw PORTW]
-               [-history HISTORY]
+               [--history HISTORY]
 
 optional arguments:
-  -h, --help        show this help message and exit
-  -token TOKEN      chat token, if you havent one, please register
+  -h, --help            show this help message and exit
+  -token TOKEN, -t TOKEN
+                        Authorization token, if you havent one, you can
+                        register
   -host HOST
-  -port PORT        port for read messages
-  -portw PORTW      port for send messages
-  -history HISTORY  history file directory
+  -port PORT            port for read messages
+  -portw PORTW          port for send messages
+  --history HISTORY     history file directory
+
 ```
 ## Project Goals
 
