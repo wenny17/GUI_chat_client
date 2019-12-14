@@ -1,7 +1,6 @@
 import argparse
 import os
 
-from dotenv import load_dotenv
 
 DEFAULT_HISTORY_DIR = "chathistory.txt"
 DEFAULT_HOST = "minechat.dvmn.org"
@@ -10,7 +9,6 @@ DEFAULT_PORT_W = 5050
 
 
 def get_args() -> argparse.Namespace:
-    load_dotenv()
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
