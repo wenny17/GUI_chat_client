@@ -58,7 +58,7 @@ async def send_msgs(host: str,
 
         if not token.is_exist:
             status_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
-            token.value, user = await registration(reader, writer, status_queue)
+            token.value, user = await registration(reader, writer)
             status_queue.put_nowait(gui.SendingConnectionStateChanged.INITIATED)
             authorized = True
         await watchdog_queue.put(WatchdogSwitcher.ENABLE)

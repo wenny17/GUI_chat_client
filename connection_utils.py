@@ -53,9 +53,8 @@ async def connect(
 
 async def authorise(reader: asyncio.StreamReader,
                     writer: asyncio.StreamWriter,
-                    token: str,
-                    skip_entry_message: bool=False) -> Dict[str, str]:
-    message = await _read_and_log(reader)  # entry_message
+                    token: str) -> Dict[str, str]:
+    _ = await _read_and_log(reader)  # entry_message
     await _write_and_log(writer, token)
     message = await _read_and_log(reader)
     auth_response = json.loads(message)
@@ -121,20 +120,18 @@ async def _pong(reader: asyncio.StreamReader,
 
 
 async def registration(reader: asyncio.StreamReader,
-                       writer: asyncio.StreamWriter,
-                       status_queue: asyncio.Queue) -> str:
+                       writer: asyncio.StreamWriter) -> str:
     login_queue = asyncio.Queue(maxsize=1)
     async with create_handy_nursery() as nursery:
         nursery.start_soon(register_draw(login_queue))
         tok = nursery.start_soon(register(
-            reader, writer, login_queue, status_queue))
+            reader, writer, login_queue))
     return tok.result()
 
 
 async def register(reader: asyncio.StreamReader,
                    writer: asyncio.StreamWriter,
-                   login_queue: asyncio.Queue,
-                   status_queue: asyncio.Queue) -> str:
+                   login_queue: asyncio.Queue) -> Tuple[str, str]:
     login = await login_queue.get()
     _ = await _read_and_log(reader)
     await _write_and_log(writer, '')
