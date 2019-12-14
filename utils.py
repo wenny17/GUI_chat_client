@@ -1,57 +1,25 @@
 from contextlib import asynccontextmanager
-import asyncio
-import socket
+from enum import Enum
 
 import aionursery
 
-RECONNECT_DELAY = 3
-CONN_ATTEMPTS_BEFORE_DELAY = 3
 
-async def connect(
-                  host, port,
-                  status_queue,
-                  conn_mode
-                  ):
-    connection_attempts = 0
-    while True:
-        try:
-            status_queue.put_nowait(conn_mode.INITIATED)
+class Token:
+    def __init__(self, token: str) -> None:
+        self.value = token
 
-            reader, writer = await asyncio.open_connection(host, port)
+    @property
+    def is_exist(self) -> bool:
+        return True if self.value else False
 
-            status_queue.put_nowait(conn_mode.ESTABLISHED)
-            return reader, writer
-        except (
-                socket.gaierror,
-                ConnectionRefusedError,
-                ConnectionResetError
-                ):
-            status_queue.put_nowait(conn_mode.CLOSED)
-            connection_attempts += 1
-            if connection_attempts > CONN_ATTEMPTS_BEFORE_DELAY:
-                status_queue.put_nowait(conn_mode.INITIATED)
-                await asyncio.sleep(RECONNECT_DELAY)
+
+class WatchdogSwitcher(Enum):
+    ENABLE = True
+    DISABLE = False
 
 
 @asynccontextmanager
-async def connect_to_addr(
-                          host, port,
-                          status_queue=None,
-                          conn_mode=None
-                          ):
-    reader, writer = None, None
-    try:
-        reader, writer = await connect(host, port, status_queue, conn_mode)
-        yield reader, writer
-
-    finally:
-        if writer:
-            writer.close()
-            await writer.wait_closed()
-
-
-@asynccontextmanager
-async def create_handy_nursery():
+async def create_handy_nursery() -> aionursery.Nursery:
     try:
         async with aionursery.Nursery() as nursery:
             yield nursery
@@ -61,4 +29,6 @@ async def create_handy_nursery():
         raise
 
 
-
+def filter_bots(message: str) -> bool:
+    adresser = message.split(':')[0]
+    return adresser in ('Vlad', 'Eva')

@@ -1,145 +1,150 @@
-import time
 import asyncio
 import logging
 import json
-from contextlib import  suppress
 from tkinter import messagebox
+from contextlib import asynccontextmanager
+import socket
+from typing import AsyncGenerator, Tuple, Union, Dict
 
-from async_timeout import timeout
+import async_timeout
+from utils import create_handy_nursery
 
-import gui
-from utils import connect_to_addr, create_handy_nursery
 from exceptions import InvalidToken
-from registration_gui import draw_register_window
+from registration_gui import register_draw
+from gui import (
+    ReadConnectionStateChanged as ReadState,
+    SendingConnectionStateChanged as SendState
+)
 
-PACKETS_TIMEOUT = 4
 PING_TIMEOUT = 1
 
 
-async def read_msgs(
-                    host,
-                    port,
-                    messages_queue,
-                    status_queue,
-                    history_queue,
-                    watchdog_queue
-                    ):
-    conn_mode = gui.ReadConnectionStateChanged
-    async with connect_to_addr(host, port, status_queue, conn_mode) as (reader, _):
-        while True:
-            data = await reader.readline()
-
-            data = data.decode("utf-8")
-            messages_queue.put_nowait(data.strip())
-            history_queue.put_nowait(data)
-            watchdog_queue.put_nowait("New message in chat")
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.FileHandler("logging.log"))
+logger.setLevel(logging.INFO)
 
 
-async def send_msgs(
-                    host,
-                    port,
-                    sending_queue,
-                    status_queue,
-                    watchdog_queue,
-                    token
-                    ):
-    if not token["token"]:
-        token["token"] = await register_new_user(host, port, status_queue)
+@asynccontextmanager
+async def connect(
+        host: str,
+        port: int,
+        status_queue: asyncio.Queue,
+        connect_state_mode: Union[ReadState, SendState],
+        timeout: Union[int, float] = 3
+) -> AsyncGenerator[Tuple[asyncio.StreamReader, asyncio.StreamWriter], None]:
 
-    token = token["token"]
-    conn_mode = gui.SendingConnectionStateChanged
-    async with connect_to_addr(host, port, status_queue, conn_mode) as (reader, writer):
-        watchdog_queue.put_nowait("Prompt before auth")
-        await authorise(reader, writer, status_queue, token)
-        watchdog_queue.put_nowait("Authorization done")
-
-        lock = asyncio.Lock()
-        async with create_handy_nursery() as nursery:
-            nursery.start_soon(send_message(reader, writer, sending_queue, watchdog_queue, lock))
-            nursery.start_soon(ping_pong(reader, writer, watchdog_queue, lock))
-
-
-async def watch_for_connection(watchdog_queue):
-    log = logging.getLogger("watchdog")
-    while True:
-        with suppress(asyncio.TimeoutError):
-            async with timeout(PACKETS_TIMEOUT) as cm:
-                action = await watchdog_queue.get()
-        if cm.expired:
-            log.debug(f"[{time.time()}] {PACKETS_TIMEOUT}s timeout is elapsed")
-            raise ConnectionError
-        log.debug(f"[{time.time()}] Connection is alive. {action}")
-
-async def send_message(reader, writer, sending_queue, watchdog_queue, lock):
-    while True:
-        message = await sending_queue.get()
-        async with lock:
-            await submit_message(reader, writer, message)
-        watchdog_queue.put_nowait("Message sent")
+    await status_queue.put(connect_state_mode.INITIATED)
+    try:
+        with async_timeout.timeout(timeout):
+            reader, writer = await asyncio.open_connection(host, port)
+    except (socket.gaierror,
+            ConnectionRefusedError,
+            ConnectionResetError,
+            asyncio.TimeoutError):
+        raise ConnectionError
+    await status_queue.put(connect_state_mode.ESTABLISHED)
+    try:
+        yield reader, writer
+    finally:
+        writer.close()
+        await writer.wait_closed()
+        await status_queue.put(connect_state_mode.CLOSED)
 
 
-async def ping_pong(reader, writer, watchdog_queue, lock):
-    while True:
-        async with lock:
-            await submit_message(reader, writer, '')
-        watchdog_queue.put_nowait("PING")
-        await asyncio.sleep(PING_TIMEOUT)
+async def authorise(reader: asyncio.StreamReader,
+                    writer: asyncio.StreamWriter,
+                    token: str,
+                    skip_entry_message: bool=False) -> Dict[str, str]:
+    message = await _read_and_log(reader)  # entry_message
+    await _write_and_log(writer, token)
+    message = await _read_and_log(reader)
+    auth_response = json.loads(message)
+    if not auth_response:
+        logger.debug("Wrong token")
+        raise InvalidToken
+    user = auth_response["nickname"]
+    logger.debug(f"authorization done. User: {user}")
+    return user
 
 
-async def read_and_log(reader):
+async def _read_and_log(reader: asyncio.StreamReader) -> str:
     message = (await reader.readline()).decode('utf-8')
-    logging.debug("RECEIVE: {}".format(message))
+    logger.debug("RECEIVE: {}".format(message))
     return message
 
 
-async def write_and_log(writer, message):
+async def _write_and_log(writer: asyncio.StreamWriter, message: str) -> None:
     writer.write(message.encode() + b'\n')
-    logging.debug("SEND: {}".format(message))
+    logger.debug("SEND: {}".format(message))
     await writer.drain()
 
 
-async def authorise(reader, writer, status_queue, token):
-    entry_message = await read_and_log(reader)
-    await write_and_log(writer, token)
-    message = await read_and_log(reader)
-    auth_response = json.loads(message)
-    if not auth_response:
-        raise InvalidToken
-    user = auth_response["nickname"]
-    status_queue.put_nowait(gui.NicknameReceived(user))
-    logging.debug(f"authorization done. User: {user}")
-    message = await read_and_log(reader)
+async def send_message(writer: asyncio.StreamWriter,
+                       sending_queue: asyncio.Queue,
+                       watchdog_queue: asyncio.Queue) -> None:
+    while True:
+        message = await sending_queue.get()
+        await submit_message(writer, message)
+        await watchdog_queue.put("Message sent")
 
 
-
-async def submit_message(reader, writer, message):
+async def submit_message(writer: asyncio.StreamWriter,
+                         message: str) -> None:
     message = ''.join(message).replace('\n', ' ') + '\n'
-    await write_and_log(writer, message)
-    message = await read_and_log(reader)
+    await _write_and_log(writer, message)
 
 
-async def register_new_user(host, port, status_queue):
-    status_queue.put_nowait(gui.SendingConnectionStateChanged.CLOSED)
+async def ping_pong(reader: asyncio.StreamReader,
+                    writer: asyncio.StreamWriter,
+                    watchdog_queue: asyncio.Queue) -> None:
+    async with create_handy_nursery() as nursery:
+        nursery.start_soon(
+            _ping(writer)
+        )
+        nursery.start_soon(
+            _pong(reader, watchdog_queue)
+        )
+
+
+async def _ping(writer: asyncio.StreamWriter) -> None:
+    while True:
+        writer.write(b'\n')
+        await writer.drain()
+        await asyncio.sleep(PING_TIMEOUT)
+
+
+async def _pong(reader: asyncio.StreamReader,
+                watchdog_queue: asyncio.Queue) -> None:
+    while True:
+        await reader.readline()
+        await watchdog_queue.put("PING")
+
+
+async def registration(reader: asyncio.StreamReader,
+                       writer: asyncio.StreamWriter,
+                       status_queue: asyncio.Queue) -> str:
     login_queue = asyncio.Queue(maxsize=1)
     async with create_handy_nursery() as nursery:
-        nursery.start_soon(draw_register_window(login_queue))
-        tok = nursery.start_soon(register(host, port, login_queue, status_queue))
+        nursery.start_soon(register_draw(login_queue))
+        tok = nursery.start_soon(register(
+            reader, writer, login_queue, status_queue))
     return tok.result()
 
 
-async def register(host, port, login_queue, status_queue):
-    conn_mode = gui.SendingConnectionStateChanged
+async def register(reader: asyncio.StreamReader,
+                   writer: asyncio.StreamWriter,
+                   login_queue: asyncio.Queue,
+                   status_queue: asyncio.Queue) -> str:
     login = await login_queue.get()
-    async with connect_to_addr(host, port, status_queue, conn_mode) as (reader, writer):
-        entry_message = await read_and_log(reader)
-        await write_and_log(writer, '')
-        message = await read_and_log(reader)
-        await write_and_log(writer, login)
-        user_data = await read_and_log(reader)
-        user_data = json.loads(user_data)
-        token = user_data["account_hash"]
-        user = user_data["nickname"]
-        status_queue.put_nowait(gui.NicknameReceived(user))
-        status_queue.put_nowait(gui.SendingConnectionStateChanged.ESTABLISHED)
-        messagebox.showinfo("registration successful", "Your token: {}\nYour nickname: {}".format(token, user))
-        return token
+    _ = await _read_and_log(reader)
+    await _write_and_log(writer, '')
+    _ = await _read_and_log(reader)
+    await _write_and_log(writer, login)
+    user_data = await _read_and_log(reader)
+    user_data = json.loads(user_data)
+    token = user_data["account_hash"]
+    user = user_data["nickname"]
+    messagebox.showinfo("registration successful",
+                        "Your token: {}\nYour nickname: {}"
+                        .format(token, user))
+    return token, user

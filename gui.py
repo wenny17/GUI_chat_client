@@ -11,7 +11,7 @@ class TkAppClosed(Exception):
 
 
 class ReadConnectionStateChanged(Enum):
-    INITIATED = 'устанавливаем соединение...'
+    INITIATED = 'устанавливаем соединение'
     ESTABLISHED = 'соединение установлено'
     CLOSED = 'соединение закрыто'
 
@@ -20,7 +20,7 @@ class ReadConnectionStateChanged(Enum):
 
 
 class SendingConnectionStateChanged(Enum):
-    INITIATED = 'устанавливаем соединение...'
+    INITIATED = 'устанавливаем соединение'
     ESTABLISHED = 'соединение установлено'
     CLOSED = 'соединение закрыто'
 
@@ -44,24 +44,19 @@ async def update_tk(root_frame, interval=1 / 120):
         try:
             root_frame.update()
         except tk.TclError:
-            # if application has been destroyed/closed
             raise TkAppClosed()
         await asyncio.sleep(interval)
 
 
 async def update_conversation_history(panel, messages_queue):
-    with open("chathistory.txt") as f:
-        f.readline()
     while True:
         msg = await messages_queue.get()
         panel['state'] = 'normal'
         if panel.index('end-1c') != '1.0':
             panel.insert('end', '\n')
         panel.insert('end', msg)
-        # TODO сделать промотку умной, чтобы не мешала просматривать историю сообщений
-        # ScrolledText.frame
-        # ScrolledText.vbar
-        panel.yview(tk.END)
+        if panel.vbar.get()[1] == 1.0:
+            panel.yview(tk.END)
         panel['state'] = 'disabled'
 
 
@@ -100,7 +95,7 @@ def create_status_panel(root_frame):
     status_write_label = tk.Label(connections_frame, height=1, fg='grey', font='arial 10', anchor='w')
     status_write_label.pack(side="top", fill=tk.X)
 
-    return (nickname_label, status_read_label, status_write_label)
+    return nickname_label, status_read_label, status_write_label
 
 
 async def draw(messages_queue, sending_queue, status_updates_queue):
@@ -131,13 +126,15 @@ async def draw(messages_queue, sending_queue, status_updates_queue):
 
     async with create_handy_nursery() as nursery:
         nursery.start_soon(update_tk(root_frame))
-        nursery.start_soon(update_conversation_history(
-                                                       conversation_panel,
-                                                       messages_queue
-                                                       )
+        nursery.start_soon(
+            update_conversation_history(
+                conversation_panel,
+                messages_queue
+            )
         )
-        nursery.start_soon(update_status_panel(
-                                               status_labels,
-                                               status_updates_queue
-                                               )
+        nursery.start_soon(
+            update_status_panel(
+                status_labels,
+                status_updates_queue
+            )
         )
