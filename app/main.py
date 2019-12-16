@@ -5,11 +5,11 @@ from tkinter import messagebox
 import aionursery
 
 import args
-import gui
 import history
 import connection
 from exceptions import InvalidToken
 from utils import create_handy_nursery, Token
+import gui
 
 RECONNECT_DELAY = 1
 

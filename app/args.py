@@ -16,7 +16,7 @@ def get_args() -> argparse.Namespace:
         "-t",
         type=str,
         default=os.getenv("TOKEN"),
-        help="Authorization token, if you havent one, you can register"
+        help="Authorization token, if you haven't one, you can register"
     )
 
     parser.add_argument(

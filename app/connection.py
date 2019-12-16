@@ -5,13 +5,13 @@ import logging
 import async_timeout
 
 import gui
-from connection_utils import registration
 from utils import create_handy_nursery, Token, WatchdogSwitcher, filter_bots
 from connection_utils import (
     authorise,
     connect,
     send_message,
     ping_pong,
+    registration
 )
 
 

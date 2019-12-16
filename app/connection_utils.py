@@ -10,10 +10,10 @@ import async_timeout
 from utils import create_handy_nursery
 
 from exceptions import InvalidToken
-from registration_gui import register_draw
 from gui import (
     ReadConnectionStateChanged as ReadState,
-    SendingConnectionStateChanged as SendState
+    SendingConnectionStateChanged as SendState,
+    register_draw
 )
 
 PING_TIMEOUT = 1
